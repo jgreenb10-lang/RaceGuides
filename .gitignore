@@ -1,11 +1,7 @@
 node_modules
 dist
-dist_enc
 .DS_Store
 *.local
 .vite
-
-# Never commit the site password or anything derived from it.
-.staticrypt.json
 .env
 .env.*
