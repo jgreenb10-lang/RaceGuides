@@ -8,6 +8,18 @@
       name="description"
       content="Gear checklist, nutrition planner, and crew plan for the Moab 240."
     />
+
+    <!-- Keep the page out of search engines and AI training crawlers. Honest
+         crawlers obey this; it is not enforcement. See README. -->
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
+    <meta name="googlebot" content="noindex, nofollow" />
+
+    <!-- Don't leak the URL to sites visitors click through to. -->
+    <meta name="referrer" content="no-referrer" />
+
+    <!-- The Content-Security-Policy is injected here at build time by
+         vite.config.js, so it locks down the published site without breaking
+         the dev server's hot-reload websocket. -->
     <title>Moab 240 — Gear &amp; Crew Checklist</title>
     <link
       rel="icon"

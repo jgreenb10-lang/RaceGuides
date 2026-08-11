@@ -749,6 +749,99 @@ const AIRPORTS = [
   },
 ];
 
+/* John's itinerary — public so crew and family can plan around his arrival.
+   Deliberately first-name-only, with no surname, seat numbers, or confirmation
+   number: enough for the people meeting him, not enough to be useful to a
+   stranger who stumbles onto the site. Anything more sensitive goes in the
+   localStorage-backed "Your Flights" fields, which are never published. */
+const RUNNER_ITINERARY = {
+  traveler: "John",
+  label: "Outbound to Moab",
+  airline: "United",
+  legs: [
+    {
+      flightNo: "UA 2324",
+      from: "ORD",
+      fromCity: "Chicago, IL",
+      to: "DEN",
+      toCity: "Denver, CO",
+      date: "Tue Oct 7",
+      depart: "1:30 PM",
+      arrive: "3:17 PM",
+      duration: "2h 47m",
+      operator: "United Airlines",
+    },
+    {
+      flightNo: "UA 4770",
+      from: "DEN",
+      fromCity: "Denver, CO",
+      to: "GJT",
+      toCity: "Grand Junction, CO",
+      date: "Tue Oct 7",
+      depart: "4:20 PM",
+      arrive: "5:31 PM",
+      duration: "1h 11m",
+      operator: "SkyWest dba United Express",
+    },
+  ],
+};
+
+/* Minutes between two date+time pairs from <input type="date"> / <input type="time">.
+   Returns null when either side is incomplete. */
+function minutesBetween(date1, time1, date2, time2) {
+  if (!date1 || !time1 || !date2 || !time2) return null;
+  const a = new Date(`${date1}T${time1}`);
+  const b = new Date(`${date2}T${time2}`);
+  if (isNaN(a) || isNaN(b)) return null;
+  const mins = Math.round((b - a) / 60000);
+  return mins >= 0 ? mins : null;
+}
+
+function formatDuration(mins) {
+  if (mins === null || !isFinite(mins)) return null;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+function makeLeg() {
+  return {
+    id: `g${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+    airline: "",
+    flightNo: "",
+    from: "",
+    to: "",
+    departDate: "",
+    departTime: "",
+    arriveDate: "",
+    arriveTime: "",
+    seat: "",
+  };
+}
+
+/* Earlier saved trips stored a single `airport` field instead of legs. */
+function normalizeTrip(t) {
+  if (t && Array.isArray(t.legs)) return t;
+  return {
+    id: t.id || `f${Date.now()}`,
+    traveler: t.traveler || "",
+    direction: t.direction || "Arriving",
+    confirmation: t.confirmation || "",
+    notes: t.notes || "",
+    legs: [
+      {
+        ...makeLeg(),
+        airline: t.airline || "",
+        flightNo: t.flightNo || "",
+        to: t.airport || "",
+        departDate: t.date || "",
+        departTime: t.time || "",
+      },
+    ],
+  };
+}
+
 const CUTOFF_STATIONS = AID_STATIONS.filter((a) => a.cutoffHours !== null);
 const RACE_DISTANCE = 241.8;
 
@@ -864,7 +957,7 @@ export default function GearChecklist() {
     } catch (e) {}
     try {
       const res4 = storage.get(FLIGHTS_KEY);
-      if (res4) setFlights(JSON.parse(res4));
+      if (res4) setFlights(JSON.parse(res4).map(normalizeTrip));
     } catch (e) {}
     try {
       const res5 = storage.get(LODGING_KEY);
@@ -911,13 +1004,9 @@ export default function GearChecklist() {
         id: `f${Date.now()}`,
         traveler: "",
         direction: "Arriving",
-        airline: "",
-        flightNo: "",
-        airport: "SLC",
-        date: "",
-        time: "",
         confirmation: "",
         notes: "",
+        legs: [makeLeg()],
       },
     ]);
 
@@ -925,6 +1014,43 @@ export default function GearChecklist() {
     setFlights((prev) => prev.map((f) => (f.id === id ? { ...f, [field]: value } : f)));
 
   const removeFlight = (id) => setFlights((prev) => prev.filter((f) => f.id !== id));
+
+  const addLeg = (tripId) =>
+    setFlights((prev) =>
+      prev.map((f) => {
+        if (f.id !== tripId) return f;
+        const last = f.legs[f.legs.length - 1];
+        // A connection starts where the previous leg landed, on the same day.
+        const next = makeLeg();
+        if (last) {
+          next.airline = last.airline;
+          next.from = last.to;
+          next.departDate = last.arriveDate || last.departDate;
+        }
+        return { ...f, legs: [...f.legs, next] };
+      })
+    );
+
+  const updateLeg = (tripId, legId, field, value) =>
+    setFlights((prev) =>
+      prev.map((f) =>
+        f.id === tripId
+          ? {
+              ...f,
+              legs: f.legs.map((g) => (g.id === legId ? { ...g, [field]: value } : g)),
+            }
+          : f
+      )
+    );
+
+  const removeLeg = (tripId, legId) =>
+    setFlights((prev) =>
+      prev.map((f) =>
+        f.id === tripId && f.legs.length > 1
+          ? { ...f, legs: f.legs.filter((g) => g.id !== legId) }
+          : f
+      )
+    );
 
   const addLodging = () =>
     setLodging((prev) => [
@@ -1925,16 +2051,103 @@ export default function GearChecklist() {
             <section className="mb-6">
               <div className="mb-3 pb-2 flex items-center gap-2" style={{ borderBottom: "2px solid #1F6F6B" }}>
                 <Plane size={16} color="#1F6F6B" />
+                <h2 className="text-lg font-bold" style={{ color: "#1F6F6B" }}>{RUNNER_ITINERARY.traveler}’s Itinerary</h2>
+              </div>
+              <div className="rounded-lg p-4" style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5D9C7" }}>
+                <div className="flex items-baseline justify-between gap-2 mb-3">
+                  <span className="text-sm font-bold">{RUNNER_ITINERARY.label}</span>
+                  <span className="text-xs font-semibold" style={{ color: "#1F6F6B" }}>
+                    {RUNNER_ITINERARY.airline} · {RUNNER_ITINERARY.legs.length} legs
+                  </span>
+                </div>
+
+                {RUNNER_ITINERARY.legs.map((leg, i) => (
+                  <div key={leg.flightNo}>
+                    {i > 0 && (
+                      <div className="flex items-center gap-2 my-2 pl-2 text-xs" style={{ color: "#8C6B52" }}>
+                        <div className="w-px self-stretch" style={{ backgroundColor: "#E5D9C7", minHeight: 18 }} />
+                        <span>
+                          Connect in {RUNNER_ITINERARY.legs[i - 1].toCity} —{" "}
+                          <b>
+                            {formatDuration(
+                              (() => {
+                                const parse = (t) => {
+                                  const m = t.match(/(\d+):(\d+)\s*(AM|PM)/);
+                                  if (!m) return null;
+                                  let h = parseInt(m[1], 10) % 12;
+                                  if (m[3] === "PM") h += 12;
+                                  return h * 60 + parseInt(m[2], 10);
+                                };
+                                const a = parse(RUNNER_ITINERARY.legs[i - 1].arrive);
+                                const b = parse(leg.depart);
+                                return a !== null && b !== null ? b - a : null;
+                              })()
+                            ) || "—"}
+                          </b>{" "}
+                          layover
+                        </span>
+                      </div>
+                    )}
+                    <div className="rounded-lg p-3" style={{ backgroundColor: "#FAF6EF", border: "1px solid #E5D9C7" }}>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="text-sm font-bold">{leg.flightNo}</span>
+                        <span className="text-xs" style={{ color: "#6b5644" }}>{leg.duration}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div className="text-lg font-bold leading-tight">{leg.depart}</div>
+                          <div className="text-xs font-semibold">{leg.from}</div>
+                          <div className="text-xs" style={{ color: "#6b5644" }}>{leg.fromCity}</div>
+                        </div>
+                        <div className="flex-1 text-center">
+                          <div className="text-xs whitespace-nowrap" style={{ color: "#6b5644" }}>{leg.duration}</div>
+                          <div className="my-1" style={{ borderTop: "1px dashed #C9B79E" }} />
+                          <div className="text-xs" style={{ color: "#a3927d" }}>{leg.date}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-bold leading-tight">{leg.arrive}</div>
+                          <div className="text-xs font-semibold">{leg.to}</div>
+                          <div className="text-xs" style={{ color: "#6b5644" }}>{leg.toCity}</div>
+                        </div>
+                      </div>
+                      <div className="text-xs mt-2 pt-2" style={{ color: "#a3927d", borderTop: "1px solid #E5D9C7" }}>
+                        Operated by {leg.operator}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {(() => {
+                  const last = RUNNER_ITINERARY.legs[RUNNER_ITINERARY.legs.length - 1];
+                  const ap = AIRPORTS.find((a) => a.code === last.to);
+                  if (!ap) return null;
+                  return (
+                    <div className="mt-3 pt-3 text-xs flex items-start gap-1.5" style={{ color: "#6b5644", borderTop: "1px solid #E5D9C7" }}>
+                      <Car size={12} className="mt-0.5 flex-shrink-0" />
+                      <span>
+                        Lands {last.arrive} {last.date} at {ap.code}. From there it is{" "}
+                        <b style={{ color: "#2B1B12" }}>{ap.miles} mi / {ap.drive}</b> to the hotel —
+                        into Moab around 7:30 PM — a day before Thursday check-in, two before the Friday start.
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
+            </section>
+
+            <section className="mb-6">
+              <div className="mb-3 pb-2 flex items-center gap-2" style={{ borderBottom: "2px solid #1F6F6B" }}>
+                <Plane size={16} color="#1F6F6B" />
                 <h2 className="text-lg font-bold" style={{ color: "#1F6F6B" }}>Your Flights</h2>
               </div>
               <p className="text-xs mb-3" style={{ color: "#6b5644" }}>
-                Add each leg so crew and family can see who lands when. Saved in this browser only —
-                nothing is uploaded, so everyone keeps their own copy.
+                Add a trip, then add a leg for each connection. Saved in this browser only —
+                nothing is uploaded, so your confirmation number stays private to you.
               </p>
 
               {flights.length === 0 && (
                 <div className="rounded-lg p-4 text-xs text-center" style={{ backgroundColor: "#FFFFFF", border: "1px dashed #E5D9C7", color: "#6b5644" }}>
-                  No flights added yet. Hit “Add flight” below to start.
+                  No trips added yet. Hit “Add trip” below to start.
                 </div>
               )}
 
@@ -1946,7 +2159,7 @@ export default function GearChecklist() {
                         value={f.traveler}
                         onChange={(e) => updateFlight(f.id, "traveler", e.target.value)}
                         placeholder="Traveler name"
-                        className="flex-1 text-sm font-semibold px-2 py-1 rounded"
+                        className="flex-1 min-w-0 text-sm font-semibold px-2 py-1 rounded"
                         style={{ backgroundColor: "#FAF6EF", border: "1px solid #E5D9C7", color: "#2B1B12" }}
                       />
                       <select
@@ -1960,54 +2173,99 @@ export default function GearChecklist() {
                       </select>
                       <button
                         onClick={() => removeFlight(f.id)}
-                        aria-label="Remove flight"
-                        className="p-1 rounded"
+                        aria-label="Remove trip"
+                        className="p-1 rounded flex-shrink-0"
                         style={{ color: "#B5502E" }}
                       >
                         <Trash2 size={14} />
                       </button>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {[
-                        { field: "airline", label: "Airline", type: "text" },
-                        { field: "flightNo", label: "Flight #", type: "text" },
-                        { field: "date", label: "Date", type: "date" },
-                        { field: "time", label: "Time", type: "time" },
-                      ].map((cfg) => (
-                        <label key={cfg.field} className="block">
-                          <span className="text-xs" style={{ color: "#6b5644" }}>{cfg.label}</span>
-                          <input
-                            type={cfg.type}
-                            value={f[cfg.field]}
-                            onChange={(e) => updateFlight(f.id, cfg.field, e.target.value)}
-                            className="w-full text-sm px-2 py-1 rounded mt-0.5"
-                            style={{ backgroundColor: "#FAF6EF", border: "1px solid #E5D9C7", color: "#2B1B12" }}
-                          />
-                        </label>
-                      ))}
-                      <label className="block">
-                        <span className="text-xs" style={{ color: "#6b5644" }}>Airport</span>
-                        <select
-                          value={f.airport}
-                          onChange={(e) => updateFlight(f.id, "airport", e.target.value)}
-                          className="w-full text-sm px-2 py-1 rounded mt-0.5"
-                          style={{ backgroundColor: "#FAF6EF", border: "1px solid #E5D9C7", color: "#2B1B12" }}
-                        >
-                          {AIRPORTS.map((a) => (
-                            <option key={a.code} value={a.code}>{a.code} — {a.city}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="block">
-                        <span className="text-xs" style={{ color: "#6b5644" }}>Confirmation #</span>
-                        <input
-                          value={f.confirmation}
-                          onChange={(e) => updateFlight(f.id, "confirmation", e.target.value)}
-                          className="w-full text-sm px-2 py-1 rounded mt-0.5 font-mono"
-                          style={{ backgroundColor: "#FAF6EF", border: "1px solid #E5D9C7", color: "#2B1B12" }}
-                        />
-                      </label>
-                    </div>
+
+                    <label className="block mb-3">
+                      <span className="text-xs" style={{ color: "#6b5644" }}>Confirmation #</span>
+                      <input
+                        value={f.confirmation}
+                        onChange={(e) => updateFlight(f.id, "confirmation", e.target.value)}
+                        className="w-full text-sm px-2 py-1 rounded mt-0.5 font-mono"
+                        style={{ backgroundColor: "#FAF6EF", border: "1px solid #E5D9C7", color: "#2B1B12" }}
+                      />
+                    </label>
+
+                    {f.legs.map((g, i) => {
+                      const prev = i > 0 ? f.legs[i - 1] : null;
+                      const layover = prev
+                        ? formatDuration(
+                            minutesBetween(prev.arriveDate, prev.arriveTime, g.departDate, g.departTime)
+                          )
+                        : null;
+                      const legMins = minutesBetween(g.departDate, g.departTime, g.arriveDate, g.arriveTime);
+                      return (
+                        <div key={g.id}>
+                          {prev && (
+                            <div className="flex items-center gap-2 my-2 text-xs" style={{ color: "#8C6B52" }}>
+                              <div className="flex-1" style={{ borderTop: "1px dashed #E5D9C7" }} />
+                              <span>
+                                {layover ? `${layover} layover` : "Layover"}
+                                {prev.to ? ` in ${prev.to}` : ""}
+                              </span>
+                              <div className="flex-1" style={{ borderTop: "1px dashed #E5D9C7" }} />
+                            </div>
+                          )}
+                          <div className="rounded-lg p-2.5" style={{ backgroundColor: "#FAF6EF", border: "1px solid #E5D9C7" }}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs font-bold" style={{ color: "#1F6F6B" }}>
+                                {f.legs.length > 1 ? `Leg ${i + 1} of ${f.legs.length}` : "Flight"}
+                                {legMins !== null ? ` · ${formatDuration(legMins)}` : ""}
+                              </span>
+                              {f.legs.length > 1 && (
+                                <button
+                                  onClick={() => removeLeg(f.id, g.id)}
+                                  aria-label={`Remove leg ${i + 1}`}
+                                  className="p-0.5 rounded"
+                                  style={{ color: "#B5502E" }}
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              {[
+                                { field: "airline", label: "Airline", type: "text", ph: "United" },
+                                { field: "flightNo", label: "Flight #", type: "text", ph: "UA 2324" },
+                                { field: "from", label: "From", type: "text", ph: "ORD" },
+                                { field: "to", label: "To", type: "text", ph: "DEN" },
+                                { field: "departDate", label: "Departs", type: "date" },
+                                { field: "departTime", label: "Depart time", type: "time" },
+                                { field: "arriveDate", label: "Arrives", type: "date" },
+                                { field: "arriveTime", label: "Arrive time", type: "time" },
+                                { field: "seat", label: "Seat", type: "text", ph: "12A" },
+                              ].map((cfg) => (
+                                <label key={cfg.field} className="block">
+                                  <span className="text-xs" style={{ color: "#6b5644" }}>{cfg.label}</span>
+                                  <input
+                                    type={cfg.type}
+                                    value={g[cfg.field]}
+                                    placeholder={cfg.ph || ""}
+                                    onChange={(e) => updateLeg(f.id, g.id, cfg.field, e.target.value)}
+                                    className={`w-full text-sm px-2 py-1 rounded mt-0.5 ${cfg.field === "from" || cfg.field === "to" ? "uppercase" : ""}`}
+                                    style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5D9C7", color: "#2B1B12" }}
+                                  />
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <button
+                      onClick={() => addLeg(f.id)}
+                      className="mt-2 inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg"
+                      style={{ backgroundColor: "#FAF6EF", color: "#1F6F6B", border: "1px solid #E5D9C7" }}
+                    >
+                      <Plus size={12} /> Add connecting flight
+                    </button>
+
                     <label className="block mt-2">
                       <span className="text-xs" style={{ color: "#6b5644" }}>Notes (rental car, who they’re riding with, etc.)</span>
                       <input
@@ -2017,15 +2275,18 @@ export default function GearChecklist() {
                         style={{ backgroundColor: "#FAF6EF", border: "1px solid #E5D9C7", color: "#2B1B12" }}
                       />
                     </label>
-                    {f.airport && (
-                      <div className="mt-2 text-xs flex items-center gap-1" style={{ color: "#6b5644" }}>
-                        <Car size={12} />
-                        {(() => {
-                          const ap = AIRPORTS.find((a) => a.code === f.airport);
-                          return ap ? `${ap.miles} mi to the hotel — ${ap.drive} drive` : null;
-                        })()}
-                      </div>
-                    )}
+
+                    {(() => {
+                      const last = f.legs[f.legs.length - 1];
+                      const ap = last && AIRPORTS.find((a) => a.code === (last.to || "").toUpperCase());
+                      if (!ap) return null;
+                      return (
+                        <div className="mt-2 text-xs flex items-center gap-1" style={{ color: "#6b5644" }}>
+                          <Car size={12} />
+                          Lands at {ap.code} — {ap.miles} mi to the hotel, {ap.drive} drive
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
@@ -2035,7 +2296,7 @@ export default function GearChecklist() {
                 className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg"
                 style={{ backgroundColor: "#1F6F6B", color: "#FFFFFF" }}
               >
-                <Plus size={14} /> Add flight
+                <Plus size={14} /> Add trip
               </button>
             </section>
 
