@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "encrypt": "staticrypt dist/index.html -d dist -c false --remember 30 --short --template-title \"Moab 240 — Crew Access\" --template-instructions \"Enter the password John shared with the crew.\" --template-button \"Enter\" --template-color-primary \"#B5502E\"",
+    "build:encrypted": "npm run build && npm run encrypt",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -17,7 +19,9 @@
     "@vitejs/plugin-react": "^6.0.5",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
+    "staticrypt": "^3.5.4",
     "tailwindcss": "^3.4.13",
-    "vite": "^8.2.1"
+    "vite": "^8.2.1",
+    "vite-plugin-singlefile": "^2.3.3"
   }
 }

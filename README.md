@@ -28,6 +28,45 @@ Checklists, nutrition settings, crew assignments, flights, and lodging are saved
 every visitor keeps a private copy, so the site can be public without exposing anyone's
 confirmation numbers.
 
+## Password protection
+
+The published site is **encrypted with StatiCrypt**. Visitors get a password prompt, and
+the server only ever holds AES-encrypted content — an unauthenticated request, including
+a scraper's, receives ciphertext and nothing else.
+
+This is real protection, not a JavaScript `if (password === "...")` check. That common
+pattern is worthless on a static host: the password and the entire page are already in
+the visitor's browser before the check runs, so anyone can read both from View Source.
+
+Two things make the encryption meaningful here:
+
+1. `vite-plugin-singlefile` inlines all JS and CSS into `index.html`, so there are no
+   separate `/assets/*.js` files left to fetch around the password prompt.
+2. The deploy workflow greps the built file for known content and **fails the build** if
+   any of it appears in plaintext, so the pipeline can't silently ship an unencrypted site.
+
+### Setting or changing the password
+
+The password lives only in a GitHub repository secret named `SITE_PASSWORD` — never in
+this repo. Set it under **Settings → Secrets and variables → Actions**. Changing it and
+re-running the deploy re-encrypts the site with the new password.
+
+Build locally with:
+
+```bash
+STATICRYPT_PASSWORD='your-password' npm run build:encrypted
+```
+
+### Limits
+
+- Everyone shares one password, so access can't be revoked per person. If it leaks, change
+  the secret and redeploy.
+- A weak password can be attacked offline once someone has the encrypted file. Use a long
+  passphrase.
+- "Remember me" stores a salted hash in the visitor's browser for 30 days, so family don't
+  re-enter it constantly. That's a convenience/security tradeoff — drop `--remember 30`
+  from the `encrypt` script to require it every visit.
+
 ## Security
 
 This is a **static site**. There is no server, no database, no API, no login, and no
@@ -57,15 +96,16 @@ What's in place:
 
 Be clear-eyed about the limits:
 
-- **A public site is public.** `robots.txt` and `noindex` ask Google, Bing, and the major
-  AI crawlers to stay away, and honest ones comply — that keeps the site out of search
-  results. They are requests, not enforcement. Malicious scrapers ignore both, and anyone
-  who has the URL can open it and read everything on it.
-- **There is no password.** Anything hardcoded into this repo is readable by anyone who
-  finds the URL or the repo, and stays in git history permanently. Only put information
-  here that you would be comfortable posting publicly.
-- **Real privacy requires not publishing the data.** Personal details belong in the
-  `localStorage`-backed fields, not in the source.
+- **`robots.txt` and `noindex` are requests, not enforcement.** Honest crawlers (Google,
+  Bing, GPTBot, ClaudeBot) comply, which keeps the site out of search results. Malicious
+  scrapers ignore both — the encryption, not the robots file, is what actually stops them.
+- **The repository is public even though the site is encrypted.** Source is readable by
+  anyone, and anything committed stays in git history permanently. Only put information in
+  the source that you would be comfortable posting publicly. Make the repo private if that
+  matters; Pages deploys fine either way.
+- **Personal details belong in the `localStorage`-backed fields**, not hardcoded in the
+  source. The shared itinerary in `RUNNER_ITINERARY` is deliberately first-name-only, with
+  no seat or confirmation numbers.
 
 ## Local development
 
