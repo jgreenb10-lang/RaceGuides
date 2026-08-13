@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Check, ExternalLink, MapPin, Compass, Droplet, Zap, ShoppingCart, Plane, BedDouble, Car, Plus, Trash2 } from "lucide-react";
+import { Check, ExternalLink, MapPin, Compass, Droplet, Zap, ShoppingCart, Plane, BedDouble, Car, Plus, Trash2, CalendarDays, ChevronLeft, ChevronRight, Flag, Dumbbell } from "lucide-react";
 
 /* ---------------- GEAR DATA ---------------- */
 
@@ -667,8 +667,207 @@ const PACER_WHAT_TO_BRING = [
   "ID and emergency contact info in case you get separated from your runner",
 ];
 
+/* ---------------- TRAINING PLAN ---------------- */
+
+const TRAINING_ACCENT = "#4F7942";
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+function startOfWeekMonday(d) {
+  const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = date.getDay(); // 0 = Sun .. 6 = Sat
+  const diff = (day === 0 ? -6 : 1) - day;
+  date.setDate(date.getDate() + diff);
+  return date;
+}
+
+function addDays(d, n) {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+}
+
+function addMonths(d, n) {
+  return new Date(d.getFullYear(), d.getMonth() + n, 1);
+}
+
+function isoKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function phaseForWeeksOut(weeksOut) {
+  if (weeksOut <= 0) return "race";
+  if (weeksOut <= 7) return "taper";
+  if (weeksOut <= 23) return "peak";
+  if (weeksOut <= 39) return "build";
+  return "base";
+}
+
+const TRAINING_PHASES = {
+  base: {
+    label: "Base",
+    color: "#8FAF6E",
+    focus:
+      "Build aerobic volume and get comfortable being on your feet for hours. Mostly easy, conversational-pace running and hiking, with one long outing each week that grows gradually.",
+    workouts: [
+      "3–4 easy runs during the week, conversational effort",
+      "One weekly long run/hike, growing roughly 10%/week",
+      "Start hiking the long day with a loaded pack (10–15 lb)",
+      "Strength work 2x/week — hips, glutes, calves, core",
+    ],
+  },
+  build: {
+    label: "Build",
+    color: "#4F7942",
+    focus:
+      "Add vertical gain and time-on-feet. Start practicing night running with your headlamp and testing the gear and nutrition you'll use on race day.",
+    workouts: [
+      "Keep 3–4 weekday runs, add hill repeats or a hilly tempo",
+      "Weekly long run on trail with meaningful vert",
+      "One night run per month with full headlamp/nutrition kit",
+      "Practice eating and drinking exactly what's on your Nutrition tab plan",
+    ],
+  },
+  peak: {
+    label: "Peak",
+    color: "#2F5233",
+    focus:
+      "Highest-volume weeks. Back-to-back long runs on Saturday and Sunday simulate race fatigue better than one huge single run — this is the specificity phase for a 200-miler.",
+    workouts: [
+      "Back-to-back long runs, Sat + Sun, both on tired legs",
+      "Include night miles in at least one long run",
+      "Rehearse drop-bag nutrition and gear changes mid-run",
+      "Every 4th week is a cutback — trust it, don't skip it",
+    ],
+  },
+  taper: {
+    label: "Taper",
+    color: "#8C6B52",
+    focus:
+      "Volume drops fast so your legs are fresh for race day. Keep some intensity so you don't feel flat, but resist the urge to cram in extra fitness now — it's too late to help and it'll only leave you tired.",
+    workouts: [
+      "Cut weekly volume ~25–40% each week",
+      "Keep short bursts of race-pace effort, drop the long grind",
+      "Dial in gear, drop bags, and crew logistics instead of miles",
+      "Sleep more than usual — this is when fitness actually banks",
+    ],
+  },
+  race: {
+    label: "Race Week",
+    color: "#B5502E",
+    focus:
+      "Almost nothing left to prove in training. Short shakeout jogs only, hydrate well, and spend your energy on logistics: drop bags, crew briefing, gear layout.",
+    workouts: [
+      "2–3 mi easy shakeout jog, Mon/Tue, then rest",
+      "Final gear check against the Gear tab",
+      "Confirm crew and pacer plans against the Crew/Pacer Guide tabs",
+      "Sleep as much as possible before Friday's 6:00 AM start",
+    ],
+  },
+};
+
+/* 52-week plan, Monday-aligned, ending on race week. weeksOut counts down to 0. */
+const TRAINING_WEEKS = (() => {
+  const raceMonday = startOfWeekMonday(RACE_START);
+  const planStart = addDays(raceMonday, -51 * 7);
+  return Array.from({ length: 52 }).map((_, i) => {
+    const start = addDays(planStart, i * 7);
+    const weeksOut = 51 - i;
+    const phase = phaseForWeeksOut(weeksOut);
+    const cutback = weeksOut > 0 && phase !== "taper" && phase !== "race" && weeksOut % 4 === 0;
+    return { id: isoKey(start), start, end: addDays(start, 6), weeksOut, phase, cutback };
+  });
+})();
+
+const TAPER_FACTORS = { 7: 0.7, 6: 0.6, 5: 0.5, 4: 0.4, 3: 0.3, 2: 0.22, 1: 0.15 };
+
+/* Scales a week's long-run target between the runner's own current long run and
+   their own peak weekend long run — both customizable in the tab. */
+function longRunTarget(week, profile) {
+  if (week.phase === "race") return null;
+  const baseMiles = Number(profile.baseMiles) || 8;
+  const peakMiles = Number(profile.peakMiles) || 30;
+  let miles;
+  if (week.phase === "taper") {
+    miles = peakMiles * (TAPER_FACTORS[week.weeksOut] ?? 0.3);
+  } else {
+    const spanStart = 51;
+    const spanEnd = 8;
+    const progress = Math.min(1, Math.max(0, (spanStart - week.weeksOut) / (spanStart - spanEnd)));
+    miles = baseMiles + (peakMiles - baseMiles) * progress;
+    if (week.cutback) miles *= 0.65;
+  }
+  return Math.max(2, Math.round(miles));
+}
+
+function clampTrainingMonth(d) {
+  const first = new Date(d.getFullYear(), d.getMonth(), 1);
+  const minMonth = new Date(TRAINING_WEEKS[0].start.getFullYear(), TRAINING_WEEKS[0].start.getMonth(), 1);
+  const maxMonth = new Date(RACE_START.getFullYear(), RACE_START.getMonth(), 1);
+  if (first < minMonth) return minMonth;
+  if (first > maxMonth) return maxMonth;
+  return first;
+}
+
+function weekRangeLabel(week) {
+  const opts = { month: "short", day: "numeric" };
+  return `${week.start.toLocaleDateString("en-US", opts)} – ${week.end.toLocaleDateString("en-US", opts)}`;
+}
+
+/* Small presentational calendar grid — one month, weeks tinted by training phase. */
+function TrainingMonthGrid({ monthDate, weeks, selectedWeekId, onSelectWeek, todayKey }) {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const gridStart = startOfWeekMonday(new Date(year, month, 1));
+  const days = Array.from({ length: 42 }).map((_, i) => addDays(gridStart, i));
+  const weekByStart = useMemo(() => {
+    const map = {};
+    weeks.forEach((w) => { map[w.start.getTime()] = w; });
+    return map;
+  }, [weeks]);
+
+  return (
+    <div>
+      <div className="grid grid-cols-7 gap-1 text-[10px] font-bold uppercase text-center mb-1" style={{ color: "#6b5644" }}>
+        {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d) => (
+          <div key={d}>{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {days.map((day) => {
+          const inMonth = day.getMonth() === month;
+          const w = weekByStart[startOfWeekMonday(day).getTime()];
+          const phaseInfo = w ? TRAINING_PHASES[w.phase] : null;
+          const key = isoKey(day);
+          const isToday = key === todayKey;
+          const isRaceDay = day.toDateString() === RACE_START.toDateString();
+          const isSelected = w && w.id === selectedWeekId;
+          return (
+            <button
+              key={key}
+              onClick={() => w && onSelectWeek(w.id)}
+              disabled={!w}
+              className="aspect-square rounded-md flex items-center justify-center text-[11px]"
+              style={{
+                opacity: inMonth ? 1 : 0.3,
+                backgroundColor: isRaceDay ? "#B5502E" : phaseInfo ? phaseInfo.color : "transparent",
+                color: phaseInfo ? "#FFFFFF" : "#2B1B12",
+                border: isToday ? "2px solid #2B1B12" : isSelected ? "2px solid #FFFFFF" : "1px solid transparent",
+                boxShadow: isSelected && !isToday ? "0 0 0 2px #2B1B12" : "none",
+                fontWeight: isToday ? 700 : 500,
+              }}
+            >
+              {isRaceDay ? <Flag size={11} /> : day.getDate()}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const TABS = [
   { id: "overview", label: "Overview", accent: "#B5502E" },
+  { id: "training", label: "Training Plan", accent: "#4F7942" },
   { id: "aid", label: "Aid Stations", accent: "#8C6B52" },
   { id: "segments", label: "Segments", accent: "#8C6B52" },
   { id: "pace", label: "Pace Calculator", accent: "#B5502E" },
@@ -895,6 +1094,8 @@ const NUTRITION_KEY = "moab240-nutrition-selection";
 const CREW_TASKS_KEY = "moab240-crew-tasks";
 const FLIGHTS_KEY = "moab240-flights";
 const LODGING_KEY = "moab240-lodging";
+const TRAINING_PROFILE_KEY = "moab240-training-profile";
+const TRAINING_LOG_KEY = "moab240-training-log";
 
 /* Saves to this browser only — each person keeps their own checklist. */
 const storage = {
@@ -936,6 +1137,17 @@ export default function GearChecklist() {
   const [curElapsedM, setCurElapsedM] = useState(0);
   const [curMile, setCurMile] = useState(0);
 
+  const [trainingProfile, setTrainingProfile] = useState({ baseMiles: 8, peakMiles: 30 });
+  const [trainingProfileLoaded, setTrainingProfileLoaded] = useState(false);
+  const [trainingLog, setTrainingLog] = useState({});
+  const [trainingLogLoaded, setTrainingLogLoaded] = useState(false);
+  const [trainingMonth, setTrainingMonth] = useState(() => clampTrainingMonth(new Date()));
+  const [selectedWeekId, setSelectedWeekId] = useState(() => {
+    const todayMonday = startOfWeekMonday(new Date()).getTime();
+    const current = TRAINING_WEEKS.find((w) => w.start.getTime() === todayMonday);
+    return current ? current.id : TRAINING_WEEKS[TRAINING_WEEKS.length - 1].id;
+  });
+
   useEffect(() => {
     try {
       const res = storage.get(STORAGE_KEY);
@@ -963,10 +1175,20 @@ export default function GearChecklist() {
       const res5 = storage.get(LODGING_KEY);
       if (res5) setLodging(JSON.parse(res5));
     } catch (e) {}
+    try {
+      const res6 = storage.get(TRAINING_PROFILE_KEY);
+      if (res6) setTrainingProfile((prev) => ({ ...prev, ...JSON.parse(res6) }));
+    } catch (e) {}
+    try {
+      const res7 = storage.get(TRAINING_LOG_KEY);
+      if (res7) setTrainingLog(JSON.parse(res7));
+    } catch (e) {}
     setLoaded(true);
     setNutritionLoaded(true);
     setCrewTasksLoaded(true);
     setTravelLoaded(true);
+    setTrainingProfileLoaded(true);
+    setTrainingLogLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -996,6 +1218,27 @@ export default function GearChecklist() {
     if (!travelLoaded) return;
     storage.set(LODGING_KEY, JSON.stringify(lodging));
   }, [lodging, travelLoaded]);
+
+  useEffect(() => {
+    if (!trainingProfileLoaded) return;
+    storage.set(TRAINING_PROFILE_KEY, JSON.stringify(trainingProfile));
+  }, [trainingProfile, trainingProfileLoaded]);
+
+  useEffect(() => {
+    if (!trainingLogLoaded) return;
+    storage.set(TRAINING_LOG_KEY, JSON.stringify(trainingLog));
+  }, [trainingLog, trainingLogLoaded]);
+
+  const toggleWeekDone = (weekId) => {
+    setTrainingLog((prev) => ({
+      ...prev,
+      [weekId]: { ...prev[weekId], done: !(prev[weekId] && prev[weekId].done) },
+    }));
+  };
+
+  const updateWeekNote = (weekId, note) => {
+    setTrainingLog((prev) => ({ ...prev, [weekId]: { ...prev[weekId], note } }));
+  };
 
   const addFlight = () =>
     setFlights((prev) => [
@@ -1151,6 +1394,17 @@ export default function GearChecklist() {
     return { currentPace, projectedFinishHours, nextStationInfo };
   }, [curMile, currentElapsedHours]);
 
+  const selectedWeek = TRAINING_WEEKS.find((w) => w.id === selectedWeekId) || null;
+  const selectedWeekPhase = selectedWeek ? TRAINING_PHASES[selectedWeek.phase] : null;
+  const selectedWeekMiles = selectedWeek ? longRunTarget(selectedWeek, trainingProfile) : null;
+  const trainingCompletedCount = Object.values(trainingLog).filter((l) => l && l.done).length;
+  const todayKey = isoKey(new Date());
+  const msToRace = RACE_START - new Date();
+  const weeksToRaceNow = Math.max(0, Math.ceil(msToRace / WEEK_MS));
+  const currentPhaseNow = TRAINING_PHASES[phaseForWeeksOut(Math.min(51, weeksToRaceNow))];
+  const trainingMinMonth = new Date(TRAINING_WEEKS[0].start.getFullYear(), TRAINING_WEEKS[0].start.getMonth(), 1);
+  const trainingMaxMonth = new Date(RACE_START.getFullYear(), RACE_START.getMonth(), 1);
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#FAF6EF", color: "#2B1B12" }}>
       <div className="max-w-2xl mx-auto px-5 py-8">
@@ -1229,6 +1483,179 @@ export default function GearChecklist() {
                 <a href="https://www.facebook.com/groups/moab240" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full" style={{ backgroundColor: "#FAF6EF", color: "#B5502E", border: "1px solid #E5D9C7" }}>Facebook Running Group<ExternalLink size={11} /></a>
               </div>
             </section>
+          </>
+        )}
+
+        {tab === "training" && (
+          <>
+            <div
+              className="mb-6 rounded-lg p-3.5 flex items-center gap-2.5"
+              style={{ backgroundColor: "#EEF3E7", border: `1px solid ${TRAINING_ACCENT}` }}
+            >
+              <CalendarDays size={18} color={TRAINING_ACCENT} />
+              <span className="text-sm font-semibold" style={{ color: "#2B1B12" }}>
+                {msToRace > 0
+                  ? `${weeksToRaceNow} week${weeksToRaceNow === 1 ? "" : "s"} to race day — you're in the ${currentPhaseNow.label} phase.`
+                  : "Race week is here — good luck out there!"}
+              </span>
+            </div>
+
+            <section className="mb-6 rounded-lg p-4" style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5D9C7" }}>
+              <div className="flex items-center gap-2 mb-2">
+                <Dumbbell size={14} color={TRAINING_ACCENT} />
+                <span className="text-sm font-bold" style={{ color: TRAINING_ACCENT }}>Personalize Your Plan</span>
+              </div>
+              <p className="text-xs mb-3" style={{ color: "#6b5644" }}>
+                This 52-week calendar scales to you: set your current weekly long run and the peak weekend
+                long run you're building toward, and every week's target updates automatically. Saved to your
+                own browser only — everyone who opens this site gets their own plan.
+              </p>
+              <div className="grid grid-cols-1 gap-3">
+                <label className="text-xs font-semibold" style={{ color: "#2B1B12" }}>
+                  Current long run (mi): {trainingProfile.baseMiles}
+                  <input
+                    type="range" min="3" max="20" step="1"
+                    value={trainingProfile.baseMiles}
+                    onChange={(e) => setTrainingProfile((p) => ({ ...p, baseMiles: Number(e.target.value) }))}
+                    className="w-full mt-1"
+                  />
+                </label>
+                <label className="text-xs font-semibold" style={{ color: "#2B1B12" }}>
+                  Peak weekend long run (mi): {trainingProfile.peakMiles}
+                  <input
+                    type="range" min="12" max="50" step="1"
+                    value={trainingProfile.peakMiles}
+                    onChange={(e) => setTrainingProfile((p) => ({ ...p, peakMiles: Number(e.target.value) }))}
+                    className="w-full mt-1"
+                  />
+                </label>
+              </div>
+            </section>
+
+            <section className="mb-6">
+              <div className="flex justify-between text-xs mb-2 font-medium" style={{ color: "#6b5644" }}>
+                <span>{trainingCompletedCount} of 52 weeks marked complete</span>
+                <span>{Math.round((trainingCompletedCount / 52) * 100)}%</span>
+              </div>
+              <div className="flex gap-[2px] mb-2">
+                {TRAINING_WEEKS.map((w) => {
+                  const isDone = trainingLog[w.id] && trainingLog[w.id].done;
+                  return (
+                    <button
+                      key={w.id}
+                      onClick={() => {
+                        setTrainingMonth(new Date(w.start.getFullYear(), w.start.getMonth(), 1));
+                        setSelectedWeekId(w.id);
+                      }}
+                      title={`${w.weeksOut === 0 ? "Race week" : `${w.weeksOut} weeks out`} — ${TRAINING_PHASES[w.phase].label}`}
+                      className="flex-1 rounded-sm"
+                      style={{
+                        height: 12,
+                        backgroundColor: w.phase === "race" ? "#B5502E" : TRAINING_PHASES[w.phase].color,
+                        opacity: isDone ? 1 : selectedWeekId === w.id ? 0.9 : 0.5,
+                        outline: selectedWeekId === w.id ? "2px solid #2B1B12" : "none",
+                      }}
+                    />
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap gap-3 text-[10px]" style={{ color: "#6b5644" }}>
+                {Object.entries(TRAINING_PHASES).map(([id, p]) => (
+                  <span key={id} className="flex items-center gap-1">
+                    <span style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: p.color, display: "inline-block" }} />
+                    {p.label}
+                  </span>
+                ))}
+              </div>
+            </section>
+
+            <section className="mb-6 rounded-lg p-4" style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5D9C7" }}>
+              <div className="flex items-center justify-between mb-3">
+                <button
+                  onClick={() => setTrainingMonth((m) => clampTrainingMonth(addMonths(m, -1)))}
+                  disabled={trainingMonth.getTime() <= trainingMinMonth.getTime()}
+                  className="p-1.5 rounded-md"
+                  style={{ border: "1px solid #E5D9C7", opacity: trainingMonth.getTime() <= trainingMinMonth.getTime() ? 0.35 : 1 }}
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="text-sm font-bold">
+                  {trainingMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                </span>
+                <button
+                  onClick={() => setTrainingMonth((m) => clampTrainingMonth(addMonths(m, 1)))}
+                  disabled={trainingMonth.getTime() >= trainingMaxMonth.getTime()}
+                  className="p-1.5 rounded-md"
+                  style={{ border: "1px solid #E5D9C7", opacity: trainingMonth.getTime() >= trainingMaxMonth.getTime() ? 0.35 : 1 }}
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+              <TrainingMonthGrid
+                monthDate={trainingMonth}
+                weeks={TRAINING_WEEKS}
+                selectedWeekId={selectedWeekId}
+                onSelectWeek={setSelectedWeekId}
+                todayKey={todayKey}
+              />
+              <button
+                onClick={() => setTrainingMonth(clampTrainingMonth(new Date()))}
+                className="text-xs font-semibold mt-3"
+                style={{ color: TRAINING_ACCENT }}
+              >
+                Jump to today
+              </button>
+            </section>
+
+            {selectedWeek && selectedWeekPhase && (
+              <section className="mb-8 rounded-lg p-4" style={{ backgroundColor: "#FFFFFF", border: `1px solid ${selectedWeekPhase.color}` }}>
+                <div className="flex items-center justify-between mb-2">
+                  <span
+                    className="text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: selectedWeekPhase.color, color: "#fff" }}
+                  >
+                    {selectedWeekPhase.label}
+                  </span>
+                  <span className="text-xs font-mono" style={{ color: "#6b5644" }}>{weekRangeLabel(selectedWeek)}</span>
+                </div>
+                <div className="text-sm font-bold mb-2">
+                  {selectedWeek.weeksOut === 0 ? "Race Week" : `${selectedWeek.weeksOut} week${selectedWeek.weeksOut === 1 ? "" : "s"} out`}
+                </div>
+                {selectedWeekMiles !== null && (
+                  <div className="text-xs mb-2" style={{ color: "#6b5644" }}>
+                    Long run target: <b style={{ color: "#2B1B12" }}>{selectedWeekMiles} mi</b>
+                    {selectedWeek.cutback && " — cutback week, ease off"}
+                    {selectedWeek.phase === "peak" && !selectedWeek.cutback && " — try it back-to-back, Sat + Sun"}
+                  </div>
+                )}
+                <p className="text-xs mb-2" style={{ color: "#6b5644" }}>{selectedWeekPhase.focus}</p>
+                <ul className="text-xs space-y-1 mb-3" style={{ color: "#6b5644" }}>
+                  {selectedWeekPhase.workouts.map((w, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span style={{ color: selectedWeekPhase.color }}>•</span>
+                      <span>{w}</span>
+                    </li>
+                  ))}
+                </ul>
+                <label className="flex items-center gap-2 mb-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!(trainingLog[selectedWeek.id] && trainingLog[selectedWeek.id].done)}
+                    onChange={() => toggleWeekDone(selectedWeek.id)}
+                  />
+                  <span className="text-xs font-semibold">Mark this week complete</span>
+                </label>
+                <label className="block text-xs font-semibold mb-1" style={{ color: "#2B1B12" }}>Your notes</label>
+                <textarea
+                  value={(trainingLog[selectedWeek.id] && trainingLog[selectedWeek.id].note) || ""}
+                  onChange={(e) => updateWeekNote(selectedWeek.id, e.target.value)}
+                  placeholder="How this week actually went — adjustments, aches, weather, gear tests..."
+                  className="w-full rounded-md p-2 text-xs"
+                  style={{ border: "1px solid #E5D9C7" }}
+                  rows={3}
+                />
+              </section>
+            )}
           </>
         )}
 

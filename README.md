@@ -10,6 +10,7 @@ Built so friends, family, and crew can all pull it up on their phones.
 | Tab | What it does |
 | --- | --- |
 | Overview | Key dates, course stats, award types, official links |
+| Training Plan | 52-week calendar counting down to race day, scaled to your own current and peak long-run mileage, with a note/complete tracker per week |
 | Aid Stations | Cutoffs, drop bags, crew and pacer access for every station |
 | Segments | Mileage, gain/loss, and terrain notes leg by leg |
 | Pace Calculator | Projected splits and cutoff margin from your current position |
@@ -23,10 +24,10 @@ Built so friends, family, and crew can all pull it up on their phones.
 
 ## Saved data
 
-Checklists, nutrition settings, crew assignments, flights, and lodging are saved to
-**your own browser** via `localStorage`. Nothing is uploaded and nothing is shared —
-every visitor keeps a private copy, so the site can be public without exposing anyone's
-confirmation numbers.
+Checklists, nutrition settings, crew assignments, flights, lodging, and your training
+plan (mileage targets, weekly notes, completed weeks) are saved to **your own browser**
+via `localStorage`. Nothing is uploaded and nothing is shared — every visitor keeps a
+private copy, so the site can be public without exposing anyone's confirmation numbers.
 
 ## Access
 
