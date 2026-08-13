@@ -88,7 +88,7 @@ export const ULTRA_RACES = [
     id: "western-states", name: "Western States Endurance Run", sport: "ultra", date: "2026-06-27", dateLabel: "June 27, 2026",
     city: "Olympic Valley → Auburn", state: "CA", country: "USA", region: "West",
     distanceLabel: "100.2 mi", officialUrl: "https://www.wser.org/",
-    profileStatus: "directory-only",
+    profileStatus: "deep", profileHref: "#/western-states",
     note: "World's oldest 100-mile trail race (run continuously since 1974/1977 on this route since 1986). Entry by lottery, ~270 finishers/yr limit.",
   },
   {
