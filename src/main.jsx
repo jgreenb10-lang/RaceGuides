@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import GearChecklist from "./GearChecklist.jsx";
+import App from "./App.jsx";
 import "./index.css";
 
 /* CSP frame-ancestors only works as an HTTP header, and GitHub Pages can't send
@@ -11,6 +11,6 @@ if (window.top !== window.self) {
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <GearChecklist />
+    <App />
   </React.StrictMode>
 );

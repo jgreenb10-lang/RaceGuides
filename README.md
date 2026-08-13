@@ -1,9 +1,20 @@
-# Moab 240 — Gear & Crew Checklist
+# Endurance Race Guides
 
-A single-page planning site for the Moab 240 Endurance Run: gear checklist, aid station
-chart, pace calculator, crew and pacer guides, nutrition planner, and travel logistics.
+Started as a single-page planning site for the Moab 240 Endurance Run and is growing into
+a directory of every full-distance and 70.3 IRONMAN race in the U.S., plus the world's
+toughest 100+ mile ultramarathons. Static site, no backend, hash-routed (`#/`, `#/moab240`,
+...) so it works unchanged on GitHub Pages.
 
-Built so friends, family, and crew can all pull it up on their phones.
+## Site map
+
+- `#/` — searchable, filterable directory of every race (`src/pages/Home.jsx`,
+  data in `src/data/races.js`). Every race in the directory has been researched from
+  official sources; races marked "Full guide" have a complete interactive profile like
+  the Moab 240 page below, the rest are directory entries (verified facts + official
+  link) pending a full write-up.
+- `#/moab240` — the original Moab 240 toolkit (`src/GearChecklist.jsx`): gear checklist,
+  aid station chart, pace calculator, crew and pacer guides, nutrition planner, and
+  travel logistics. Built so friends, family, and crew can all pull it up on their phones.
 
 ## Tabs
 

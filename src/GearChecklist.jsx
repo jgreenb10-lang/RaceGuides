@@ -1472,6 +1472,9 @@ export default function GearChecklist() {
     <div className="min-h-screen" style={{ backgroundColor: "#FAF6EF", color: "#2B1B12" }}>
       <div className="max-w-2xl mx-auto px-5 py-8">
         <header className="mb-6">
+          <a href="#/" className="inline-flex items-center gap-1 text-xs font-semibold mb-2" style={{ color: "#8C6B52" }}>
+            ← All races
+          </a>
           <div className="flex items-center gap-2 text-xs uppercase tracking-widest font-semibold" style={{ color: "#B5502E" }}>
             <Compass size={14} />
             <span>Moab 240 · Oct 9, 2026</span>
