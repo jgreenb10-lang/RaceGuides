@@ -604,6 +604,18 @@ const PACER_ACCESS_STATIONS = AID_STATIONS.filter(
   (a) => a.pacer && a.pacer !== "No" && a.pacer !== "—"
 );
 
+/* Zones a pacer can be assigned to: the legal join/leave stations, plus the Finish —
+   a pacer picked up at the last station rides the runner all the way in. */
+const PACER_ZONES = (() => {
+  const finish = AID_STATIONS.find((a) => a.name === "Finish");
+  const points = [...PACER_ACCESS_STATIONS, finish];
+  return points.slice(0, -1).map((a, i) => {
+    const next = points[i + 1];
+    const miles = Math.round((next.mile - a.mile) * 10) / 10;
+    return { id: `z${i + 1}`, from: a.name, fromMile: a.mile, to: next.name, toMile: next.mile, miles };
+  });
+})();
+
 const CREW_WHAT_TO_BRING = [
   "Your own food and water — aid station supplies are reserved for runners and volunteers",
   "Camp chairs, shade/warm layers — waits can run long, especially overnight",
@@ -1096,6 +1108,7 @@ const FLIGHTS_KEY = "moab240-flights";
 const LODGING_KEY = "moab240-lodging";
 const TRAINING_PROFILE_KEY = "moab240-training-profile";
 const TRAINING_LOG_KEY = "moab240-training-log";
+const PACER_PLAN_KEY = "moab240-pacer-plan";
 
 /* Saves to this browser only — each person keeps their own checklist. */
 const storage = {
@@ -1148,6 +1161,10 @@ export default function GearChecklist() {
     return current ? current.id : TRAINING_WEEKS[TRAINING_WEEKS.length - 1].id;
   });
 
+  const [pacers, setPacers] = useState([]);
+  const [zoneAssignments, setZoneAssignments] = useState({});
+  const [pacerPlanLoaded, setPacerPlanLoaded] = useState(false);
+
   useEffect(() => {
     try {
       const res = storage.get(STORAGE_KEY);
@@ -1183,12 +1200,21 @@ export default function GearChecklist() {
       const res7 = storage.get(TRAINING_LOG_KEY);
       if (res7) setTrainingLog(JSON.parse(res7));
     } catch (e) {}
+    try {
+      const res8 = storage.get(PACER_PLAN_KEY);
+      if (res8) {
+        const parsed = JSON.parse(res8);
+        if (parsed.pacers) setPacers(parsed.pacers);
+        if (parsed.zoneAssignments) setZoneAssignments(parsed.zoneAssignments);
+      }
+    } catch (e) {}
     setLoaded(true);
     setNutritionLoaded(true);
     setCrewTasksLoaded(true);
     setTravelLoaded(true);
     setTrainingProfileLoaded(true);
     setTrainingLogLoaded(true);
+    setPacerPlanLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -1228,6 +1254,30 @@ export default function GearChecklist() {
     if (!trainingLogLoaded) return;
     storage.set(TRAINING_LOG_KEY, JSON.stringify(trainingLog));
   }, [trainingLog, trainingLogLoaded]);
+
+  useEffect(() => {
+    if (!pacerPlanLoaded) return;
+    storage.set(PACER_PLAN_KEY, JSON.stringify({ pacers, zoneAssignments }));
+  }, [pacers, zoneAssignments, pacerPlanLoaded]);
+
+  const addPacer = () => setPacers((prev) => [...prev, { id: `pc${Date.now()}`, name: "" }]);
+
+  const updatePacerName = (id, name) =>
+    setPacers((prev) => prev.map((p) => (p.id === id ? { ...p, name } : p)));
+
+  const removePacer = (id) => {
+    setPacers((prev) => prev.filter((p) => p.id !== id));
+    setZoneAssignments((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((zid) => {
+        if (next[zid] === id) next[zid] = "";
+      });
+      return next;
+    });
+  };
+
+  const assignZone = (zoneId, pacerId) =>
+    setZoneAssignments((prev) => ({ ...prev, [zoneId]: pacerId }));
 
   const toggleWeekDone = (weekId) => {
     setTrainingLog((prev) => ({
@@ -1404,6 +1454,19 @@ export default function GearChecklist() {
   const currentPhaseNow = TRAINING_PHASES[phaseForWeeksOut(Math.min(51, weeksToRaceNow))];
   const trainingMinMonth = new Date(TRAINING_WEEKS[0].start.getFullYear(), TRAINING_WEEKS[0].start.getMonth(), 1);
   const trainingMaxMonth = new Date(RACE_START.getFullYear(), RACE_START.getMonth(), 1);
+
+  const pacerTotals = useMemo(() => {
+    const totals = {};
+    pacers.forEach((p) => { totals[p.id] = 0; });
+    PACER_ZONES.forEach((z) => {
+      const pid = zoneAssignments[z.id];
+      if (pid && totals[pid] !== undefined) totals[pid] += z.miles;
+    });
+    return totals;
+  }, [pacers, zoneAssignments]);
+
+  const totalPaceableMiles = Math.round(PACER_ZONES.reduce((s, z) => s + z.miles, 0) * 10) / 10;
+  const assignedZoneCount = PACER_ZONES.filter((z) => zoneAssignments[z.id]).length;
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#FAF6EF", color: "#2B1B12" }}>
@@ -2160,6 +2223,98 @@ export default function GearChecklist() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </section>
+
+            <section className="mb-6">
+              <div className="mb-2 pb-2" style={{ borderBottom: "2px solid #1F6F6B" }}>
+                <h2 className="text-base font-bold" style={{ color: "#1F6F6B" }}>Assign Pacers to Zones</h2>
+                <p className="text-xs mt-0.5" style={{ color: "#6b5644" }}>
+                  Add each pacer, then assign them to the zones they'll cover — only legal join/leave points
+                  are listed. Totals below show how far each pacer will actually run. Saved to your own
+                  browser only.
+                </p>
+              </div>
+
+              {pacers.length === 0 && (
+                <div className="rounded-lg p-4 text-xs text-center mb-3" style={{ backgroundColor: "#FFFFFF", border: "1px dashed #E5D9C7", color: "#6b5644" }}>
+                  No pacers added yet. Hit “Add pacer” below to start.
+                </div>
+              )}
+
+              <div className="space-y-2 mb-3">
+                {pacers.map((p) => (
+                  <div key={p.id} className="flex items-center gap-2">
+                    <input
+                      value={p.name}
+                      onChange={(e) => updatePacerName(p.id, e.target.value)}
+                      placeholder="Pacer name"
+                      className="flex-1 min-w-0 text-sm font-semibold px-2 py-1.5 rounded"
+                      style={{ backgroundColor: "#FFFFFF", border: "1px solid #E5D9C7", color: "#2B1B12" }}
+                    />
+                    <span
+                      className="text-xs font-mono px-2 py-1 rounded flex-shrink-0"
+                      style={{ backgroundColor: "#EAF4F3", color: "#1F6F6B" }}
+                    >
+                      {pacerTotals[p.id] ? pacerTotals[p.id].toFixed(1) : "0.0"} mi
+                    </span>
+                    <button
+                      onClick={() => removePacer(p.id)}
+                      aria-label="Remove pacer"
+                      className="p-1 rounded flex-shrink-0"
+                      style={{ color: "#B5502E" }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={addPacer}
+                className="mb-4 inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg"
+                style={{ backgroundColor: "#FAF6EF", color: "#1F6F6B", border: "1px solid #E5D9C7" }}
+              >
+                <Plus size={12} /> Add pacer
+              </button>
+
+              <div className="rounded-lg overflow-x-auto" style={{ border: "1px solid #E5D9C7" }}>
+                <table className="text-xs w-full" style={{ minWidth: 480 }}>
+                  <thead>
+                    <tr style={{ backgroundColor: "#1F6F6B", color: "#fff" }}>
+                      <th className="text-left py-2 px-2">Zone</th>
+                      <th className="text-left py-2 px-2">Distance</th>
+                      <th className="text-left py-2 px-2">Pacer</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {PACER_ZONES.map((z, i) => (
+                      <tr key={z.id} style={{ backgroundColor: i % 2 === 0 ? "#FFFFFF" : "#FAF6EF" }}>
+                        <td className="py-1.5 px-2 font-semibold whitespace-nowrap">{z.from} → {z.to}</td>
+                        <td className="py-1.5 px-2 font-mono whitespace-nowrap">{z.miles} mi</td>
+                        <td className="py-1.5 px-2">
+                          <select
+                            value={zoneAssignments[z.id] || ""}
+                            onChange={(e) => assignZone(z.id, e.target.value)}
+                            disabled={pacers.length === 0}
+                            className="text-xs px-1.5 py-1 rounded font-semibold w-full"
+                            style={{ backgroundColor: "#FAF6EF", border: "1px solid #E5D9C7", color: "#1F6F6B" }}
+                          >
+                            <option value="">Unassigned</option>
+                            {pacers.map((p) => (
+                              <option key={p.id} value={p.id}>{p.name || "Unnamed pacer"}</option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-3 text-xs" style={{ color: "#6b5644" }}>
+                {assignedZoneCount} of {PACER_ZONES.length} zones assigned · {totalPaceableMiles} total pace-able
+                miles from Indian Creek to the Finish
               </div>
             </section>
 
