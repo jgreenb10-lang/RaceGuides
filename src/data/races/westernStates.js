@@ -45,6 +45,11 @@ export const WESTERN_STATES = {
     "trail is remote and reachable only by foot, horse, or helicopter. The canyons " +
     "between Last Chance and Michigan Bluff are the hottest, hardest miles on the course.",
 
+  extraColumns: [
+    { key: "split24", label: "24h" },
+    { key: "split30", label: "30h" },
+  ],
+
   /* Checkpoint chart, verbatim from the official table.
      cutoff = time you must LEAVE the aid station by.
      A cutoff marked default:true is a fallback equal to the next station's cutoff,

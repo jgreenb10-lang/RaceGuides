@@ -40,9 +40,17 @@ function formatPace(minPerMile) {
   return `${m}:${String(s).padStart(2, "0")}/mi`;
 }
 
-/* Cutoffs are wall-clock strings that roll past midnight. Walk them in course
-   order and add a day whenever the clock goes backwards, so every station gets
-   an elapsed-hours-from-start value the calculator can use. */
+/* Cutoffs are published as wall-clock strings, so they need turning into
+   elapsed-hours-from-start before the calculator can use them.
+
+   Default: walk them in course order and add a day whenever the clock goes
+   backwards. That covers races whose cutoffs advance steadily past midnight.
+
+   It is NOT enough on its own. A race like HURT 100 has its first cutoff 29
+   hours in at 11:00 — later in the day than its 06:00 start, so nothing appears
+   to go backwards and the naive read is 5 hours. Any station may therefore
+   declare `cutoffDayOffset` (0 = race day, 1 = the next day, ...) which wins
+   over the heuristic. */
 function withElapsedCutoffs(race) {
   const startMin = parseClock(race.startTimeLabel?.match(/\d{1,2}:\d{2}\s*(am|pm)/i)?.[0]) ?? 5 * 60;
   let dayOffset = 0;
@@ -50,10 +58,16 @@ function withElapsedCutoffs(race) {
   return race.aidStations.map((st) => {
     const c = parseClock(st.cutoff);
     if (c === null) return { ...st, cutoffElapsedH: null };
-    let abs = c + dayOffset * 1440;
-    while (abs < prevAbs) {
-      dayOffset += 1;
+    let abs;
+    if (typeof st.cutoffDayOffset === "number") {
+      dayOffset = st.cutoffDayOffset;
       abs = c + dayOffset * 1440;
+    } else {
+      abs = c + dayOffset * 1440;
+      while (abs < prevAbs) {
+        dayOffset += 1;
+        abs = c + dayOffset * 1440;
+      }
     }
     prevAbs = abs;
     return { ...st, cutoffElapsedH: (abs - startMin) / 60 };
@@ -92,6 +106,12 @@ export default function UltraRaceProfile({ race }) {
   const accent = race.accent || "#1F6F6B";
 
   const stations = useMemo(() => withElapsedCutoffs(race), [race]);
+
+  /* Races publish different reference columns — Western States gives 24h/30h
+     splits, Hardrock gives station opening times and a 48h pace. Each race
+     declares its own; the table just renders whatever is listed. */
+  const extraColumns = race.extraColumns || [];
+  const tableMinWidth = 560 + extraColumns.length * 60;
 
   const [curMile, setCurMile] = useState(0);
   const [curH, setCurH] = useState(0);
@@ -270,7 +290,7 @@ export default function UltraRaceProfile({ race }) {
               </p>
             </div>
             <div className="rounded-lg overflow-x-auto" style={{ border: `1px solid ${LINE}` }}>
-              <table className="text-xs" style={{ minWidth: 660 }}>
+              <table className="text-xs" style={{ minWidth: tableMinWidth }}>
                 <thead>
                   <tr style={{ backgroundColor: accent, color: "#fff" }}>
                     <th className="text-left py-2 px-2">Station</th>
@@ -279,8 +299,9 @@ export default function UltraRaceProfile({ race }) {
                     <th className="text-left py-2 px-2">Drop Bag</th>
                     <th className="text-left py-2 px-2">Crew</th>
                     <th className="text-left py-2 px-2">Pacer</th>
-                    <th className="text-left py-2 px-2">24h</th>
-                    <th className="text-left py-2 px-2">30h</th>
+                    {extraColumns.map((c) => (
+                      <th key={c.key} className="text-left py-2 px-2">{c.label}</th>
+                    ))}
                     <th className="text-left py-2 px-2">Cutoff</th>
                   </tr>
                 </thead>
@@ -297,8 +318,11 @@ export default function UltraRaceProfile({ race }) {
                       <td className="py-1.5 px-2 whitespace-nowrap">
                         {a.pacerChange === true ? "Swap OK" : a.pacerChange || ""}
                       </td>
-                      <td className="py-1.5 px-2 font-mono whitespace-nowrap" style={{ color: MUTED }}>{a.split24}</td>
-                      <td className="py-1.5 px-2 font-mono whitespace-nowrap" style={{ color: MUTED }}>{a.split30}</td>
+                      {extraColumns.map((c) => (
+                        <td key={c.key} className="py-1.5 px-2 font-mono whitespace-nowrap" style={{ color: MUTED }}>
+                          {a[c.key] ?? ""}
+                        </td>
+                      ))}
                       <td className="py-1.5 px-2 font-mono whitespace-nowrap font-semibold">
                         {a.cutoff || "—"}
                         {a.cutoffDefault && <span style={{ color: "#B5502E" }}>*</span>}
