@@ -6,6 +6,12 @@ import { WESTERN_STATES } from "./data/races/westernStates.js";
 import { HARDROCK_100 } from "./data/races/hardrock100.js";
 import { VERMONT_100 } from "./data/races/vermont100.js";
 import { HURT_100 } from "./data/races/hurt100.js";
+import { UTMB } from "./data/races/utmb.js";
+import { ERYRI_100 } from "./data/races/eryri100.js";
+import { UTMR } from "./data/races/utmr.js";
+import { GRAND_RAID } from "./data/races/grandRaid.js";
+import { CHICAMOCHA } from "./data/races/chicamocha.js";
+import { EVEREST_TRAIL_RACE } from "./data/races/everestTrailRace.js";
 
 /* Races with a full guide built from the shared UltraRaceProfile template.
    Adding another ultra means adding a data file and one line here. */
@@ -14,6 +20,12 @@ const ULTRA_PROFILES = {
   "/hardrock-100": HARDROCK_100,
   "/vermont-100": VERMONT_100,
   "/hurt-100": HURT_100,
+  "/utmb": UTMB,
+  "/ultra-trail-snowdonia": ERYRI_100,
+  "/utmr": UTMR,
+  "/grand-raid-reunion": GRAND_RAID,
+  "/chicamocha-canyon-race": CHICAMOCHA,
+  "/everest-trail-race": EVEREST_TRAIL_RACE,
 };
 
 function getRoute() {

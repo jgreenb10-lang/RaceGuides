@@ -33,11 +33,14 @@ function formatDuration(mins) {
   return `${neg ? "−" : ""}${h}h ${String(m).padStart(2, "0")}m`;
 }
 
-function formatPace(minPerMile) {
-  if (!isFinite(minPerMile) || minPerMile <= 0) return "—";
-  const m = Math.floor(minPerMile);
-  const s = Math.round((minPerMile - m) * 60);
-  return `${m}:${String(s).padStart(2, "0")}/mi`;
+/* Distances are whatever the race publishes — miles for the US races, km for
+   the European and South American ones. Nothing is converted; a race declares
+   `unit: "km"` and every label follows. */
+function formatPace(minPerUnit, unit = "mi") {
+  if (!isFinite(minPerUnit) || minPerUnit <= 0) return "—";
+  const m = Math.floor(minPerUnit);
+  const s = Math.round((minPerUnit - m) * 60);
+  return `${m}:${String(s).padStart(2, "0")}/${unit}`;
 }
 
 /* Cutoffs are published as wall-clock strings, so they need turning into
@@ -93,13 +96,25 @@ function useStoredState(key, initial) {
   return [value, setValue];
 }
 
-const TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "aid", label: "Aid Stations" },
-  { id: "pace", label: "Pace Calculator" },
-  { id: "crew", label: "Crew & Pacers" },
-  { id: "notes", label: "Race Notes" },
-];
+/* Multi-day stage races have no single finish cutoff to project against, so the
+   pace calculator is omitted rather than shown with invented numbers. */
+function tabsFor(race) {
+  if (race.stageRace) {
+    return [
+      { id: "overview", label: "Overview" },
+      { id: "aid", label: "Stages" },
+      { id: "crew", label: "Support & Rules" },
+      { id: "notes", label: "Race Notes" },
+    ];
+  }
+  return [
+    { id: "overview", label: "Overview" },
+    { id: "aid", label: "Aid Stations" },
+    { id: "pace", label: "Pace Calculator" },
+    { id: "crew", label: "Crew & Pacers" },
+    { id: "notes", label: "Race Notes" },
+  ];
+}
 
 export default function UltraRaceProfile({ race }) {
   const [tab, setTab] = useState("overview");
@@ -112,6 +127,18 @@ export default function UltraRaceProfile({ race }) {
      declares its own; the table just renders whatever is listed. */
   const extraColumns = race.extraColumns || [];
   const tableMinWidth = 560 + extraColumns.length * 60;
+
+  const unit = race.unit || "mi";
+  // Stage races list cumulative distance, so label it as such.
+  const unitLabel = race.stageRace
+    ? `Cum. ${unit}`
+    : unit === "km"
+    ? "KM"
+    : "Mile";
+  /* UTMB-style races forbid pacers outright, so the zone tool is meaningless
+     there — the tab shows the rule instead. */
+  const pacersAllowed = race.pacersAllowed !== false;
+  const tabs = useMemo(() => tabsFor(race), [race]);
 
   const [curMile, setCurMile] = useState(0);
   const [curH, setCurH] = useState(0);
@@ -215,7 +242,7 @@ export default function UltraRaceProfile({ race }) {
           </p>
 
           <div className="flex gap-1.5 mt-5 overflow-x-auto pb-1" style={{ WebkitOverflowScrolling: "touch" }}>
-            {TABS.map((t) => (
+            {tabs.map((t) => (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
@@ -283,26 +310,30 @@ export default function UltraRaceProfile({ race }) {
         {tab === "aid" && (
           <section className="mb-8">
             <div className="mb-3 pb-2" style={{ borderBottom: `2px solid ${accent}` }}>
-              <h2 className="text-lg font-bold" style={{ color: accent }}>Aid Station Chart</h2>
+              <h2 className="text-lg font-bold" style={{ color: accent }}>
+                {race.stageRace ? "Stage Breakdown" : "Aid Station Chart"}
+              </h2>
               <p className="text-xs mt-0.5" style={{ color: MUTED }}>
-                Cutoffs are the time you must <b>leave</b> the station. Splits are the
-                published 24-hour and 30-hour paces.
+                {race.stageRace
+                  ? race.stageNote ||
+                    "One stage per day, each finishing at a camp. Distances are as published by the organisers."
+                  : "Cutoffs are the time you must leave the station."}
               </p>
             </div>
             <div className="rounded-lg overflow-x-auto" style={{ border: `1px solid ${LINE}` }}>
               <table className="text-xs" style={{ minWidth: tableMinWidth }}>
                 <thead>
                   <tr style={{ backgroundColor: accent, color: "#fff" }}>
-                    <th className="text-left py-2 px-2">Station</th>
-                    <th className="text-left py-2 px-2">Mile</th>
-                    <th className="text-left py-2 px-2">Med</th>
-                    <th className="text-left py-2 px-2">Drop Bag</th>
-                    <th className="text-left py-2 px-2">Crew</th>
-                    <th className="text-left py-2 px-2">Pacer</th>
+                    <th className="text-left py-2 px-2">{race.stageRace ? "Stage" : "Station"}</th>
+                    <th className="text-left py-2 px-2">{unitLabel}</th>
+                    {!race.stageRace && <th className="text-left py-2 px-2">Med</th>}
+                    {!race.stageRace && <th className="text-left py-2 px-2">Drop Bag</th>}
+                    {!race.stageRace && <th className="text-left py-2 px-2">Crew</th>}
+                    {!race.stageRace && <th className="text-left py-2 px-2">Pacer</th>}
                     {extraColumns.map((c) => (
                       <th key={c.key} className="text-left py-2 px-2">{c.label}</th>
                     ))}
-                    <th className="text-left py-2 px-2">Cutoff</th>
+                    {!race.stageRace && <th className="text-left py-2 px-2">Cutoff</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -310,23 +341,23 @@ export default function UltraRaceProfile({ race }) {
                     <tr key={a.name} style={{ backgroundColor: i % 2 === 0 ? "#FFFFFF" : CREAM }}>
                       <td className="py-1.5 px-2 font-semibold whitespace-nowrap">{a.name}</td>
                       <td className="py-1.5 px-2 font-mono">{a.mile}</td>
-                      <td className="py-1.5 px-2">{a.medical ? "Yes" : ""}</td>
-                      <td className="py-1.5 px-2 whitespace-nowrap">
+                      {!race.stageRace && <td className="py-1.5 px-2">{a.medical ? "Yes" : ""}</td>}
+                      {!race.stageRace && (<td className="py-1.5 px-2 whitespace-nowrap">
                         {a.dropBag === true ? "Yes" : a.dropBag || ""}
-                      </td>
-                      <td className="py-1.5 px-2 whitespace-nowrap">{a.crew}</td>
-                      <td className="py-1.5 px-2 whitespace-nowrap">
+                      </td>)}
+                      {!race.stageRace && <td className="py-1.5 px-2 whitespace-nowrap">{a.crew}</td>}
+                      {!race.stageRace && (<td className="py-1.5 px-2 whitespace-nowrap">
                         {a.pacerChange === true ? "Swap OK" : a.pacerChange || ""}
-                      </td>
+                      </td>)}
                       {extraColumns.map((c) => (
                         <td key={c.key} className="py-1.5 px-2 font-mono whitespace-nowrap" style={{ color: MUTED }}>
                           {a[c.key] ?? ""}
                         </td>
                       ))}
-                      <td className="py-1.5 px-2 font-mono whitespace-nowrap font-semibold">
+                      {!race.stageRace && (<td className="py-1.5 px-2 font-mono whitespace-nowrap font-semibold">
                         {a.cutoff || "—"}
                         {a.cutoffDefault && <span style={{ color: "#B5502E" }}>*</span>}
-                      </td>
+                      </td>)}
                     </tr>
                   ))}
                 </tbody>
@@ -356,7 +387,7 @@ export default function UltraRaceProfile({ race }) {
             <div className="rounded-lg p-4 mb-4" style={card}>
               <div className="grid grid-cols-3 gap-2">
                 <label className="block">
-                  <span className="text-xs" style={{ color: MUTED }}>Current mile</span>
+                  <span className="text-xs" style={{ color: MUTED }}>Current {unit}</span>
                   <input
                     type="number" min="0" max={race.distance} step="0.1" value={curMile}
                     onChange={(e) => setCurMile(parseFloat(e.target.value) || 0)}
@@ -397,7 +428,7 @@ export default function UltraRaceProfile({ race }) {
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
                       <div className="text-xs" style={{ color: MUTED }}>Average pace</div>
-                      <div className="font-bold text-lg">{formatPace(projection.pace)}</div>
+                      <div className="font-bold text-lg">{formatPace(projection.pace, unit)}</div>
                     </div>
                     <div>
                       <div className="text-xs" style={{ color: MUTED }}>Projected finish</div>
@@ -489,14 +520,30 @@ export default function UltraRaceProfile({ race }) {
 
         {tab === "crew" && (
           <>
+            {!pacersAllowed && (
+              <section className="mb-6 rounded-lg p-4" style={{ backgroundColor: "#FFF7F3", border: "1px solid #E0B9A6" }}>
+                <div className="flex items-start gap-2">
+                  <AlertTriangle size={16} color="#B5502E" className="flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h2 className="text-base font-bold mb-1" style={{ color: "#B5502E" }}>No pacers at this race</h2>
+                    <p className="text-xs" style={{ color: MUTED }}>
+                      {race.noPacerNote ||
+                        "Being accompanied by anyone not registered in the race is forbidden outside the marked spectator zones. There is no pacer-zone plan to make — only assistance points, listed below."}
+                    </p>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {pacersAllowed && (
             <section className="mb-6">
               <div className="mb-3 pb-2 flex items-center gap-2" style={{ borderBottom: `2px solid ${accent}` }}>
                 <Users size={16} color={accent} />
                 <h2 className="text-lg font-bold" style={{ color: accent }}>Assign Pacers to Zones</h2>
               </div>
               <p className="text-xs mb-3" style={{ color: MUTED }}>
-                Pacing is legal from <b>{race.pacerStartStation}</b> (mile {race.pacerStartMile}) onward.
-                Only real swap points are listed. Saved to your own browser only.
+                Pacing is legal from <b>{race.pacerStartStation}</b> ({unit === "km" ? "km" : "mile"}{" "}
+                {race.pacerStartMile}) onward. Only real swap points are listed. Saved to your own browser only.
               </p>
 
               {pacers.length === 0 && (
@@ -551,7 +598,7 @@ export default function UltraRaceProfile({ race }) {
                     {zones.map((z, i) => (
                       <tr key={z.id} style={{ backgroundColor: i % 2 === 0 ? "#FFFFFF" : CREAM }}>
                         <td className="py-1.5 px-2 font-semibold">{z.from} → {z.to}</td>
-                        <td className="py-1.5 px-2 font-mono whitespace-nowrap">{z.miles} mi</td>
+                        <td className="py-1.5 px-2 font-mono whitespace-nowrap">{z.miles} {unit}</td>
                         <td className="py-1.5 px-2">
                           <select
                             value={zoneAssign[z.id] || ""}
@@ -579,12 +626,15 @@ export default function UltraRaceProfile({ race }) {
               </div>
               <p className="text-xs mt-2" style={{ color: MUTED }}>
                 {Object.keys(zoneAssign).length} of {zones.length} zones assigned ·{" "}
-                {totalPaceable} total pace-able miles from {race.pacerStartStation} to the finish
+                {totalPaceable} total pace-able {unit} from {race.pacerStartStation} to the finish
               </p>
             </section>
+            )}
 
             <section className="mb-6 rounded-lg p-4" style={card}>
-              <h2 className="text-base font-bold mb-2" style={{ color: accent }}>Pacer Rules</h2>
+              <h2 className="text-base font-bold mb-2" style={{ color: accent }}>
+                {pacersAllowed ? "Pacer Rules" : "Assistance Rules"}
+              </h2>
               <ul className="text-xs space-y-1.5" style={{ color: MUTED }}>
                 {race.pacerRules.map((r, i) => (
                   <li key={i}>• {r}</li>
