@@ -12,6 +12,8 @@ import { UTMR } from "./data/races/utmr.js";
 import { GRAND_RAID } from "./data/races/grandRaid.js";
 import { CHICAMOCHA } from "./data/races/chicamocha.js";
 import { EVEREST_TRAIL_RACE } from "./data/races/everestTrailRace.js";
+import TriathlonRaceProfile from "./components/TriathlonRaceProfile.jsx";
+import { IRONMAN_BY_ID } from "./data/races/ironman.js";
 
 /* Races with a full guide built from the shared UltraRaceProfile template.
    Adding another ultra means adding a data file and one line here. */
@@ -48,6 +50,19 @@ export default function App() {
   }, [route]);
 
   if (route === "/moab240") return <GearChecklist />;
-  if (ULTRA_PROFILES[route]) return <UltraRaceProfile race={ULTRA_PROFILES[route]} />;
+
+  /* The `key` matters: without it React reuses the same component instance
+     when you move between two races, so per-race state (the wetsuit
+     temperature box, the pace calculator inputs) carries over from the
+     previous race and shows the wrong answer. Keying by race id forces a
+     fresh mount. */
+  const ultra = ULTRA_PROFILES[route];
+  if (ultra) return <UltraRaceProfile key={ultra.id} race={ultra} />;
+
+  /* All 40 IRONMAN races share one route shape and one template, so they are
+     matched by id rather than listed individually. */
+  const tri = IRONMAN_BY_ID[route.replace(/^\//, "")];
+  if (tri) return <TriathlonRaceProfile key={tri.id} race={tri} />;
+
   return <Home />;
 }
