@@ -27,6 +27,14 @@ import {
   NO_PACER_NOTE,
   RULES_SOURCES,
 } from "../ironmanRules.js";
+import { ALL_RACES } from "../races.js";
+
+/* Race names come from the directory rather than being derived from the id.
+   Deriving them mangled the awkward ones — "LA Quinta" instead of La Quinta,
+   "Coeur Dalene" instead of Coeur d'Alene, and the hyphenated Dallas-Little Elm
+   and Rockford-Illinois. The directory already holds the official names, so
+   there is no reason to have a second, worse copy. */
+const NAME_BY_ID = Object.fromEntries(ALL_RACES.map((r) => [r.id, r.name]));
 
 const FULL = "full";
 const HALF = "703";
@@ -86,9 +94,7 @@ const TIER_LABEL = { [FULL]: "IRONMAN", [HALF]: "IRONMAN 70.3" };
 function build(row) {
   const [id, slug, tier, date, city, state, swim, bike, run, hiF, hiC, loF, loC, waterF, waterC] = row;
   const seg = SEGMENTS[tier];
-  const name = tier === FULL
-    ? (id === "im-world-championship" ? "IRONMAN World Championship" : `IRONMAN ${cityToTitle(id, city, state)}`)
-    : `IRONMAN 70.3 ${cityToTitle(id, city, state)}`;
+  const name = NAME_BY_ID[id] || id;
 
   return {
     id,
@@ -113,16 +119,6 @@ function build(row) {
     waterF, waterC,
     wetsuit: wetsuitStatus(waterC),
   };
-}
-
-/* The directory already holds proper race names; derive a display suffix from
-   the id so the two stay consistent without duplicating a name table. */
-function cityToTitle(id, city, state) {
-  const raw = id.replace(/^im703-/, "").replace(/^im-/, "");
-  return raw
-    .split("-")
-    .map((w) => (w.length <= 2 ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1)))
-    .join(" ");
 }
 
 export const IRONMAN_RACES = RAW.map(build);

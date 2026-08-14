@@ -7,14 +7,39 @@ toughest 100+ mile ultramarathons. Static site, no backend, hash-routed (`#/`, `
 
 ## Site map
 
-- `#/` — searchable, filterable directory of every race (`src/pages/Home.jsx`,
-  data in `src/data/races.js`). Every race in the directory has been researched from
-  official sources; races marked "Full guide" have a complete interactive profile like
-  the Moab 240 page below, the rest are directory entries (verified facts + official
-  link) pending a full write-up.
+- `#/` — searchable, filterable directory of all 51 races (`src/pages/Home.jsx`,
+  data in `src/data/races.js`). Every race has a full interactive guide.
 - `#/moab240` — the original Moab 240 toolkit (`src/GearChecklist.jsx`): gear checklist,
   aid station chart, pace calculator, crew and pacer guides, nutrition planner, and
   travel logistics. Built so friends, family, and crew can all pull it up on their phones.
+- `#/western-states`, `#/hardrock-100`, … — the other 10 ultras, all rendered by one
+  data-driven component (`src/components/UltraRaceProfile.jsx`). Each has an aid station
+  chart with cut-offs, a cut-off calculator that projects from your current position, and
+  a pacer-zone planner derived from wherever that race actually allows pacer swaps.
+- `#/im-lake-placid`, `#/im703-oceanside`, … — all 40 US IRONMAN and IRONMAN 70.3 races
+  (`src/components/TriathlonRaceProfile.jsx`). Different sport, different template: no
+  pacers and no crew on course, so instead there is a wetsuit-legality calculator, the
+  two transitions, drafting and penalty rules, and a gear list split by discipline.
+
+### Two race templates, one rule
+
+Adding a race is a data file plus one line in `src/App.jsx` — never another copy of a
+component. Ultras live in `src/data/races/*.js`; the IRONMAN races are one table in
+`src/data/races/ironman.js` because they share a structure.
+
+Both templates are keyed by race id in `App.jsx`. That is not cosmetic: without the key
+React reuses one component instance between races and the previous race's calculator
+inputs bleed into the next one.
+
+### Where the numbers come from
+
+Every figure traces to the race's own website, with source URLs kept in each data file and
+shown on the page. Where a race doesn't publish something, the field is left out rather
+than estimated.
+
+IRONMAN cut-off times are deliberately absent. IRONMAN sets them per event and publishes
+them only in each event's Athlete Information Guide, so each profile links that guide
+instead. A wrong cut-off is worse than no cut-off.
 
 ## Tabs
 
