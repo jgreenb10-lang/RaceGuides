@@ -31,6 +31,27 @@ Both templates are keyed by race id in `App.jsx`. That is not cosmetic: without 
 React reuses one component instance between races and the previous race's calculator
 inputs bleed into the next one.
 
+### Gear and nutrition
+
+Every race has a Gear tab and a Nutrition tab, built from three shared modules rather than
+51 copies:
+
+- `src/data/gearKits.js` — three kits, because gear is decided by sport and distance, not
+  by city: `ultra`, `ironman-full`, `ironman-703`. The full-distance kit carries special
+  needs bags and a headlamp for a post-dark finish; the 70.3 kit drops both. A race can
+  declare its own `mandatoryGear`, which renders above the shared kit.
+- `src/data/nutritionProducts.js` — one product catalogue with carbs, sodium, caffeine and
+  retailer links, shared by the Moab page and both templates.
+- `src/components/NutritionPlanner.jsx` — the Moab fuelling maths, generalised so race
+  duration comes from whichever race renders it. Carb products split the hourly carb
+  target between them; electrolyte capsules top up whatever sodium the carbs leave short.
+  It outputs a shopping list, the rates you'll actually hit, and a timed intake plan.
+
+Nutrition defaults differ by sport because the sensible starting point does — a 70.3 is
+short and hard so carb rates run high, while a 100-miler is long and slow and the limiter
+is the stomach. Ultras pre-fill race hours from that race's own cut-off. They are starting
+points to test in training, not prescriptions.
+
 ### Where the numbers come from
 
 Every figure traces to the race's own website, with source URLs kept in each data file and
