@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { ExternalLink, MapPin, Compass, Zap, Plus, Trash2, Users, AlertTriangle } from "lucide-react";
+import GearGuide from "./GearGuide.jsx";
+import NutritionPlanner, { NUTRITION_DEFAULTS } from "./NutritionPlanner.jsx";
+import { GEAR_KITS } from "../data/gearKits.js";
 
 /* A race-agnostic profile page. Everything shown comes from the `race` object
    passed in (see src/data/races/westernStates.js for the shape), so adding a
@@ -77,6 +80,17 @@ function withElapsedCutoffs(race) {
   });
 }
 
+/* Start hour drives the clock column on the fuelling timeline. Races state it
+   in their own words ("5:00 AM Saturday"), so pull the hour back out of that
+   rather than duplicating it as another field. */
+function startHourOf(race) {
+  const m = race.startTimeLabel?.match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
+  if (!m) return 6;
+  let h = parseInt(m[1], 10) % 12;
+  if (/pm/i.test(m[3])) h += 12;
+  return h + parseInt(m[2], 10) / 60;
+}
+
 function useStoredState(key, initial) {
   const [value, setValue] = useState(initial);
   const [loaded, setLoaded] = useState(false);
@@ -104,6 +118,8 @@ function tabsFor(race) {
       { id: "overview", label: "Overview" },
       { id: "aid", label: "Stages" },
       { id: "crew", label: "Support & Rules" },
+      { id: "gear", label: "Gear" },
+      { id: "nutrition", label: "Nutrition" },
       { id: "notes", label: "Race Notes" },
     ];
   }
@@ -112,6 +128,8 @@ function tabsFor(race) {
     { id: "aid", label: "Aid Stations" },
     { id: "pace", label: "Pace Calculator" },
     { id: "crew", label: "Crew & Pacers" },
+    { id: "gear", label: "Gear" },
+    { id: "nutrition", label: "Nutrition" },
     { id: "notes", label: "Race Notes" },
   ];
 }
@@ -146,6 +164,30 @@ export default function UltraRaceProfile({ race }) {
 
   const [pacers, setPacers] = useStoredState(`race-${race.id}-pacers`, []);
   const [zoneAssign, setZoneAssign] = useStoredState(`race-${race.id}-zones`, {});
+
+  const [gearChecked, setGearChecked] = useStoredState(`race-${race.id}-gear`, {});
+  const toggleGear = (k) => setGearChecked((p) => ({ ...p, [k]: !p[k] }));
+
+  /* Fuelling defaults: plan for the cut-off rather than a dream time, since
+     that is what you actually have to carry food for. Stage races fuel per
+     stage, not across the whole event. */
+  const defaultHours = race.stageRace
+    ? 10
+    : race.cutoffHours || NUTRITION_DEFAULTS.ultra.hours;
+  const [raceHours, setRaceHours] = useStoredState(`race-${race.id}-nut-hours`, defaultHours);
+  const [selectedIds, setSelectedIds] = useStoredState(`race-${race.id}-nut-products`, [
+    "maurten",
+    "tailwind",
+    "saltstick",
+  ]);
+  const [carbTarget, setCarbTarget] = useStoredState(
+    `race-${race.id}-nut-carb`,
+    NUTRITION_DEFAULTS.ultra.carb
+  );
+  const [sodiumTarget, setSodiumTarget] = useStoredState(
+    `race-${race.id}-nut-sodium`,
+    NUTRITION_DEFAULTS.ultra.sodium
+  );
 
   /* Zones run between consecutive legal pacer-swap points, starting wherever
      pacing becomes legal and ending at the finish. */
@@ -651,6 +693,38 @@ export default function UltraRaceProfile({ race }) {
               </ul>
             </section>
           </>
+        )}
+
+        {tab === "gear" && (
+          <GearGuide
+            kit={GEAR_KITS.ultra}
+            checked={gearChecked}
+            onToggle={toggleGear}
+            mandatoryGear={race.mandatoryGear}
+            mandatoryNote={race.mandatoryGearNote}
+            accent={accent}
+          />
+        )}
+
+        {tab === "nutrition" && (
+          <NutritionPlanner
+            kind="ultra"
+            accent={accent}
+            raceHours={raceHours}
+            setRaceHours={setRaceHours}
+            selectedIds={selectedIds}
+            setSelectedIds={setSelectedIds}
+            carbTarget={carbTarget}
+            setCarbTarget={setCarbTarget}
+            sodiumTarget={sodiumTarget}
+            setSodiumTarget={setSodiumTarget}
+            startHour={startHourOf(race)}
+            durationNote={
+              race.stageRace
+                ? "Stage races fuel per stage, so set this to a single day's running time, not the whole event."
+                : `Pre-filled with this race's ${race.cutoffHours}-hour cut-off — set it to your realistic finish time instead.`
+            }
+          />
         )}
 
         {tab === "notes" && (

@@ -2,6 +2,9 @@ import React, { useState, useEffect, useMemo } from "react";
 import { ExternalLink, MapPin, Waves, Bike, Footprints, AlertTriangle, Check, Thermometer } from "lucide-react";
 import { wetsuitStatus, WETSUIT_LIMITS } from "../data/ironmanRules.js";
 import { SWIM_RULES, BIKE_RULES, PENALTY_RULES, RESULT_CODES, NO_PACER_NOTE, RULES_SOURCES } from "../data/ironmanRules.js";
+import GearGuide from "./GearGuide.jsx";
+import NutritionPlanner, { NUTRITION_DEFAULTS } from "./NutritionPlanner.jsx";
+import { gearKitFor } from "../data/gearKits.js";
 
 /* Profile page for IRONMAN and IRONMAN 70.3 races.
 
@@ -27,81 +30,7 @@ const TABS = [
   { id: "wetsuit", label: "Wetsuit" },
   { id: "rules", label: "Rules" },
   { id: "gear", label: "Gear" },
-];
-
-/* Gear split the way a triathlon actually needs it. Shared across every
-   IRONMAN race; the wetsuit line adapts to what the rules allow. */
-const GEAR = [
-  {
-    id: "swim",
-    title: "Swim",
-    icon: Waves,
-    accent: "#1F6F6B",
-    items: [
-      "Wetsuit (if legal — see the Wetsuit tab)",
-      "Official swim cap (issued at check-in)",
-      "Goggles, plus a spare pair",
-      "Anti-fog spray or baby shampoo",
-      "Body glide for neck and shoulders",
-      "Tri kit to wear under the wetsuit",
-      "Timing chip and ankle strap",
-    ],
-  },
-  {
-    id: "t1",
-    title: "T1 — swim to bike",
-    icon: Bike,
-    accent: "#8C6B52",
-    items: [
-      "Bike shoes",
-      "Helmet (must be buckled BEFORE you touch the bike)",
-      "Sunglasses",
-      "Race belt with number",
-      "Towel to mark your spot and dry your feet",
-      "Sunscreen",
-    ],
-  },
-  {
-    id: "bike",
-    title: "Bike",
-    icon: Bike,
-    accent: "#B5502E",
-    items: [
-      "Bike, serviced and with fresh tyres",
-      "Two bottles minimum, plus a frame or aero bottle",
-      "Nutrition taped or bento-boxed to the frame",
-      "Spare tube or tubular, CO2 and inflator, tyre levers",
-      "Multi-tool",
-      "Bike computer, charged",
-      "Special needs bag (full IRONMAN only)",
-    ],
-  },
-  {
-    id: "t2",
-    title: "T2 — bike to run",
-    icon: Footprints,
-    accent: "#8C6B52",
-    items: [
-      "Run shoes with elastic laces",
-      "Socks, if you wear them",
-      "Hat or visor",
-      "Run nutrition",
-      "Salt tablets",
-    ],
-  },
-  {
-    id: "run",
-    title: "Run & general",
-    icon: Footprints,
-    accent: "#1F6F6B",
-    items: [
-      "Handheld or run belt flask",
-      "Anti-chafe balm",
-      "Headlamp for late finishers at full-distance races",
-      "Post-race dry clothes bag",
-      "Photo ID and race documents for check-in",
-    ],
-  },
+  { id: "nutrition", label: "Nutrition" },
 ];
 
 function useStoredState(key, initial) {
@@ -146,8 +75,22 @@ export default function TriathlonRaceProfile({ race }) {
   }, [tempC]);
 
   const card = { backgroundColor: "#FFFFFF", border: `1px solid ${LINE}` };
-  const totalGear = GEAR.reduce((a, g) => a + g.items.length, 0);
-  const doneGear = Object.values(checked).filter(Boolean).length;
+
+  const kit = gearKitFor(race);
+  const nutKind = race.tier === "full" ? "ironman-full" : "ironman-703";
+  const nutDefaults = NUTRITION_DEFAULTS[nutKind];
+
+  const [raceHours, setRaceHours] = useStoredState(`tri-${race.id}-nut-hours`, nutDefaults.hours);
+  const [selectedIds, setSelectedIds] = useStoredState(`tri-${race.id}-nut-products`, [
+    "maurten",
+    "tailwind",
+    "saltstick",
+  ]);
+  const [carbTarget, setCarbTarget] = useStoredState(`tri-${race.id}-nut-carb`, nutDefaults.carb);
+  const [sodiumTarget, setSodiumTarget] = useStoredState(
+    `tri-${race.id}-nut-sodium`,
+    nutDefaults.sodium
+  );
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: CREAM, color: INK }}>
@@ -472,56 +415,33 @@ export default function TriathlonRaceProfile({ race }) {
         )}
 
         {tab === "gear" && (
-          <>
-            <div className="mb-4 rounded-lg p-3 flex items-center justify-between" style={card}>
-              <span className="text-xs" style={{ color: MUTED }}>Packed</span>
-              <span className="text-sm font-bold" style={{ color: accent }}>{doneGear} / {totalGear}</span>
-            </div>
+          <GearGuide
+            kit={kit}
+            checked={checked}
+            onToggle={toggle}
+            accent={accent}
+          />
+        )}
 
-            {GEAR.map((group) => (
-              <section key={group.id} className="mb-5">
-                <div className="mb-2 pb-1.5 flex items-center gap-2" style={{ borderBottom: `2px solid ${group.accent}` }}>
-                  <group.icon size={15} color={group.accent} />
-                  <h2 className="text-base font-bold" style={{ color: group.accent }}>{group.title}</h2>
-                </div>
-                <div className="space-y-1.5">
-                  {group.items.map((item) => {
-                    const key = `${group.id}-${item}`;
-                    const on = !!checked[key];
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => toggle(key)}
-                        className="w-full text-left rounded-lg p-2.5 flex items-start gap-2.5 transition-colors"
-                        style={{ backgroundColor: "#FFFFFF", border: `1px solid ${on ? group.accent : LINE}` }}
-                      >
-                        <span
-                          className="flex-shrink-0 mt-0.5 rounded flex items-center justify-center"
-                          style={{
-                            width: 16, height: 16,
-                            backgroundColor: on ? group.accent : "transparent",
-                            border: `1.5px solid ${on ? group.accent : "#C9B79E"}`,
-                          }}
-                        >
-                          {on && <Check size={11} color="#fff" />}
-                        </span>
-                        <span
-                          className="text-xs"
-                          style={{ color: on ? MUTED : INK, textDecoration: on ? "line-through" : "none" }}
-                        >
-                          {item}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
-            <p className="text-xs" style={{ color: MUTED }}>
-              Ticks are saved in your own browser only. This is a general IRONMAN list — check your
-              race's Athlete Guide for anything event-specific.
-            </p>
-          </>
+        {tab === "nutrition" && (
+          <NutritionPlanner
+            kind={nutKind}
+            accent={accent}
+            raceHours={raceHours}
+            setRaceHours={setRaceHours}
+            selectedIds={selectedIds}
+            setSelectedIds={setSelectedIds}
+            carbTarget={carbTarget}
+            setCarbTarget={setCarbTarget}
+            sodiumTarget={sodiumTarget}
+            setSodiumTarget={setSodiumTarget}
+            startHour={race.tier === "full" ? 7 : 7}
+            durationNote={
+              race.tier === "full"
+                ? "Set this to your realistic 140.6 finish time. Most age-groupers land between 11 and 15 hours; the cut-off is in the Athlete Guide."
+                : "Set this to your realistic 70.3 finish time — most age-groupers land between 5 and 7 hours."
+            }
+          />
         )}
 
         <footer className="mt-10 pt-4 text-xs text-center" style={{ color: "#a3927d", borderTop: `1px solid ${LINE}` }}>
